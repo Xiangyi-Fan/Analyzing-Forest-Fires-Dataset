@@ -1,0 +1,453 @@
+---
+title: "151 Project"
+author: "Xiangyi Fan"
+date: "April 23, 2018"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+## Introduction
+
+In this project, we are analyzing the Forest Fires dataset. We should find vairables that influence the total burned area in the forest fires and construct a predictive model to predict the total burned area in terms of the given variables. 
+
+<br> In my result, I select some of variables building three regression models varying from the format of the response variable "area". Finally I choose the best one as the predictive equation for this model.
+
+## Data Description
+
+The Forest Fires dataset has 13 variables and 517 observations including one response variable "area" and 12 explanatory variables consisting of spatial and temporal variables, FWI component variables and weather variables.
+
+#### The exploratory visualization of the data is:
+```{r ,echo=FALSE}
+library(car)
+data = read.csv("C:/Users/TG/Desktop/Berkeley2/STAT 151/Project/forestfires.csv")
+par(mfrow = c(3,4))
+hist(data$area, 100)
+hist(data$X, 100)
+hist(data$Y, 100)
+hist(data$FFMC, 100)
+hist(data$DMC, 100)
+hist(data$DC, 100)
+hist(data$ISI, 100)
+hist(data$temp, 100)
+hist(data$RH, 100)
+hist(data$wind, 100)
+hist(data$rain, 100)
+```
+ 
+#### The summary statistics of the data is:
+```{r ,echo=FALSE}
+summary(data)
+data2 = data[, -c(3,4)]
+cor(data2)
+```
+
+From the plot and the tables above, we can see the response variable "area" and "rain" are obviously "right skewed"(quite a lot of data is 0) and variable "FFMC" is particularly "left skewed". Meanwhile, the forest fires are almost evenly distributed in different day, yet have uneven distributions among each month. We can also see that there are pairs of correlated variables, such as ("X", "Y"), ("FFMC", "ISI"), ("FFMC", "temp"), ("DMC", "DC"), ("DC", "temp"), ("DMC", "temp"), ("temp", "RH").
+
+## Analyses and Results
+
+## Linear regression with continuous "area"
+
+#### Transformation of data
+
+To deal with the skewness of the data, I make transformations of variables "area" and "FFMC":
+$$area=\log(area + 1)$$
+$$FFMC=FFMC^{10}$$
+
+#### Add Dummy variables --- X & Y & Month & Day
+We can find that spatial variables "X" and "Y" are both dummy variables ranging from 1-9 and 2-9.
+
+```{r ,echo=FALSE, fig.width=8, fig.height=4}
+data5 = data
+data5 = cbind(data, 0, 0, 0, 4, 6)
+colnames(data5)<-c("X","Y","month", "day", "FFMC", "DMC", "DC", "ISI", "temp", "RH", "wind", "rain", "area", "S1","S2","S3","season","fire_class")
+
+data5[which(data5[,3]=="dec" | data5[,3]=="jan" | data5[,3]=="feb"),14] = 1
+data5[which(data5[,3]=="jul" | data5[,3]=="aug" | data5[,3]=="sep"),15] = 1
+data5[which(data5[,3]=="mar" | data5[,3]=="apr" | data5[,3]=="nov"),16] = 1
+
+data5[which(data5[,3]=="dec" | data5[,3]=="jan" | data5[,3]=="feb"),17] = 1
+data5[which(data5[,3]=="jul" | data5[,3]=="aug" | data5[,3]=="sep"),17] = 2
+data5[which(data5[,3]=="mar" | data5[,3]=="apr" | data5[,3]=="nov"),17] = 3
+
+data5[which(data5[,13] == 0),18] = 1
+data5[which(data5[,13] >0 & data5[,13] <= 4),18] = 2
+data5[which(data5[,13] >4 & data5[,13] <= 40),18] = 3
+data5[which(data5[,13] >40 & data5[,13] <= 120),18] = 4
+data5[which(data5[,13] >120 & data5[,13] <= 400),18] = 5
+par(mfrow = c(1,3))
+
+boxplot(data5$X ~ data5$Y, xlab = "X", ylab = "Y")
+boxplot(data5$fire_class ~ data5$X, xlab = "X", ylab = "fire_class")
+boxplot(data5$fire_class ~ data5$Y, xlab = "X", ylab = "fire_class")
+```
+
+<br>From the boxplots, we can see that "X" is closesly correlated with "Y". So in the regression model "X" and "Y" cannot exist simultaneously. What is more, there are some x-spatial coordinates where the probability of large fire area is significantly smaller than the other. It means that X can be a meaningful predictive aspect of fire area to some extend. So I use X as dummy variables{x1, x2, x3, x4, x5, 6, x7, x8} in the regression model.  
+
+```{r ,echo=FALSE}
+data3 = data
+data3 = cbind(data3, 0, 0, 0, 0, 0, 0, 0, 0)
+colnames(data3)<-c("X","Y","month", "day", "FFMC", "DMC", "DC", "ISI", "temp", "RH", "wind", "rain", "area", "x1","x2","x3","x4","x5","x6","x7","x8")
+data3[which(data3[, 1]==1),14] = 1
+data3[which(data3[, 1]==2),15] = 1
+data3[which(data3[, 1]==3),16] = 1
+data3[which(data3[, 1]==4),17] = 1
+data3[which(data3[, 1]==5),18] = 1
+data3[which(data3[, 1]==6),19] = 1
+data3[which(data3[, 1]==7),20] = 1
+data3[which(data3[, 1]==8),21] = 1
+```
+
+<br>Since outside temperature varies with month and "temp" is correlated with many other variables like "FFMC", "DMC" and "RH", I use the relations of "temp" and "area" to identify the influence of variable "month". The variations of temperatures and areas in different months can be visualized as:
+
+```{r ,echo=FALSE, fig.width=12, fig.height=4}
+data2 = data
+par(mfrow = c(1,2))
+plot(data2$temp[data2$month == "jan"], log(data2$area[data2$month == "jan"]+1), col =2, xlim = c(0, 35), ylim = c(0, 8), xlab = "temp", ylab = "log(area+1)", main = "log(area+1) vs. temp, month")
+points(data2$temp[data2$month == "feb"], log(data2$area[data2$month == "feb"]+1), col =3)
+points(data2$temp[data2$month == "mar"], log(data2$area[data2$month == "mar"]+1), col =4)
+points(data2$temp[data2$month == "apr"], log(1+data2$area[data2$month == "apr"]), col =5)
+points(data2$temp[data2$month == "may"], log(1+data2$area[data2$month == "may"]), col =6)
+points(data2$temp[data2$month == "jun"], log(1+data2$area[data2$month == "jun"]), col =7)
+legend(0, 1000, legend = c("jan", "feb", "mar", "apr", "may", "jun"), col = 2:7, pch = 1, cex = 0.8)
+
+plot(data2$temp[data2$month == "jul"], log(1+data2$area[data2$month == "jul"]), col =2, xlim = c(0, 35), ylim = c(0, 8), xlab = "temp", ylab = "area", main = "area vs. temp, month")
+points(data2$temp[data2$month == "aug"], log(1+data2$area[data2$month == "aug"]), col =3)
+points(data2$temp[data2$month == "sep"], log(1+data2$area[data2$month == "sep"]), col =4)
+points(data2$temp[data2$month == "oct"], log(1+data2$area[data2$month == "oct"]), col =5)
+points(data2$temp[data2$month == "nov"], log(1+data2$area[data2$month == "nov"]), col =6)
+points(data2$temp[data2$month == "dec"], log(1+data2$area[data2$month == "dec"]), col =7)
+legend(0, 1000, legend = c("jul", "aug", "sep", "oct", "nov", "dec"), col = 2:7, pch = 1, cex = 0.8)
+```
+
+```{r ,echo=FALSE,fig.width=8, fig.height=4}
+boxplot(data2$temp ~ data2$month, xlab = "month", ylab = "temperature")
+```
+
+According to the variations of areas and temperatures, I divide 12 months into 4 groups and add 3 dummy variables{S1, S2, S3} in the regression model. The first group consists of dec, jan and feb; the second group consists of jul, aug and sep; the third group consists of mar, apr and nov; the fourth group consists of may, jun and oct. For the dummy variables: {S1 = 1, S2 = 0, S3 = 0} denotes group1, {S1 = 0, S2 = 1, S3 = 0} denotes group2, {S1 = 0, S2= 0, S3 =1} denotes group3, and {S1 = 0, S2 =0, S3 = 0} denotes group4. 
+
+<br> The variation of areas and temperatures among months can be visualized as:
+
+```{r ,echo=FALSE,fig.width=6, fig.height=4}
+data3 = cbind(data3, 0, 0, 0, 4)
+colnames(data3)<-c("X","Y","month", "day", "FFMC", "DMC", "DC", "ISI", "temp", "RH", "wind", "rain", "area", "x1","x2","x3","x4","x5","x6","x7","x8", "S1","S2","S3","season")
+data3[which(data3[,3]=="dec" | data3[,3]=="jan" | data3[,3]=="feb"),22] = 1
+data3[which(data3[,3]=="jul" | data3[,3]=="aug" | data3[,3]=="sep"),23] = 1
+data3[which(data3[,3]=="mar" | data3[,3]=="apr" | data3[,3]=="nov"),24] = 1
+
+data3[which(data3[,3]=="dec" | data3[,3]=="jan" | data3[,3]=="feb"),25] = 1
+data3[which(data3[,3]=="jul" | data3[,3]=="aug" | data3[,3]=="sep"),25] = 2
+data3[which(data3[,3]=="mar" | data3[,3]=="apr" | data3[,3]=="nov"),25] = 3
+
+coplot(log(data3$area + 1) ~ temp| season, data=data3, panel = function(x,y,...){
+  panel.smooth(x,y,span = 0.8,iter = 5,col.smooth = "green4",...)
+  abline(lm(y ~ x), col="red")},
+  rows=1,pch=19, cex=0.3)
+```
+
+The variations of FWI component variables and weather variables in different days can be visualized as:
+```{r ,echo=FALSE}
+par(mfrow = c(2,4))
+boxplot(data2$FFMC ~ data2$day, ylab = "FFMC")
+boxplot(data2$DMC ~ data2$day, ylab = "DMC")
+boxplot(data2$DC ~ data2$day, ylab = "DC")
+boxplot(data2$ISI ~ data2$day, ylab = "ISI")
+boxplot(data2$temp ~ data2$day, ylab = "temp")
+boxplot(data2$RH ~ data2$day, ylab = "RH")
+boxplot(data2$wind ~ data2$day, ylab = "wind")
+boxplot(data2$rain ~ data2$day, ylab = "rain")
+```
+
+From the boxplots above, we can see these is no obvious difference between different days. So I do not consider "day" as a variable in the regression model.
+
+#### Identity the ourliers
+
+- Find the Large Leverage Points
+
+I make the regression of "area" on all the variables(except for "day") and find the large leverage points. The measure of leverage is so-called $hat-value$. $h_{ii}$ is the $i_{th}$ entry of the hat matrix calculated as $X^T(X^{T}X)^{-1}X$
+```{r ,echo=FALSE, message = FALSE}
+X = matrix(c(rep.int(1,517),data3$FFMC, data3$DMC, data3$DC, data3$ISI, data3$temp, data3$RH, data3$wind, data3$rain,data3$x1,data3$x2,data3$x3,data3$x4,data3$x5,data3$x6,data3$x7,data3$x8,data3$S1,data3$S2,data3$S3),nrow=517,ncol=20)
+h_hat = X%*%(solve(t(X)%*%X))%*%t(X)
+row_num = matrix(row.names(data))
+hat_value = data.frame(row_num,diag(h_hat))
+colnames(hat_value) = c('row_num','h_hat')
+high_leverage_value = data.frame(hat_value[hat_value$h_hat >= (mean(hat_value$h_hat)*2),])
+```
+
+- Find the Outliers
+
+In linear regression analysis, an oulier can be detected by the studentized residual, which is calculated as:
+$$E_i^*=\frac{E_i}{S_{E(-i)}\sqrt{1-h_i}}=E_i^{'}\sqrt{\frac{n-k-2}{n-k-1-E_i^{'2}}}$$
+The test follows a t-distribution with n-k-2 which is 496 degrees of freedom.
+
+```{r, echo=FALSE}
+lm.all = lm(log(area + 1) ~ FFMC**10 + DMC + DC + ISI + temp + RH + wind + rain + (FFMC**10)*x1+ (FFMC**10)*x2+ (FFMC**10)*x3+ (FFMC**10)*x4+ (FFMC**10)*x5+ (FFMC**10)*x6+ (FFMC**10)*x7+ (FFMC**10)*x8+ (FFMC**10)*S1 + (FFMC**10)*S2 + (FFMC**10)*S2 + DMC*S1 + DMC*S2 + DMC*S3 + DMC*x1+ DMC*x2+DMC*x3+DMC*x4+DMC*x5+DMC*x6+DMC*x7+DMC*x8+ DC*S1 + DC*S2 + DC*S3 +DC*x1 + DC*x2+ DC*x3 +DC*x4 + DC*x5 + DC*x6 +DC*x7 + DC*x8 + ISI*S1 + ISI*S2 + ISI*S3 + ISI*x1 + ISI*x2 + ISI*x3 +ISI*x4 + ISI*x5 + ISI*x6 +ISI*x7 + ISI*x8 + temp*S1 + temp*S2 + temp*S3 + temp*x1 + temp*x2 + temp*x3 +temp*x4 + temp*x5 + temp*x6 +temp*x7 + temp*x8 + RH*S1 + RH*S2 + RH*S3 +RH*x1 + RH*x2 + RH*x3 +RH*x4 + RH*x5 + RH*x6+RH*x7 + RH*x8 + rain*S1 + rain*S2 + rain*S3 + rain*x1 + rain*x2 + rain*x3 +rain*x4 + rain*x5 + rain*x6 +rain*x7 + rain*x8 + wind*S1 + wind*S2 +wind*S3 + wind*x1 + wind*x2 +wind*x3 +wind*x4 + wind*x5 +wind*x6 +wind*x7 + wind*x8 +S1 + S2 + S3 + x1+ x2+ x3+ x4+ x5+ x6+ x7+ x8, data = data3)
+hat_value = diag(h_hat)
+E_s_quote=rep.int(1,517)
+E_s=rep.int(1,517)
+for (i in 1:517) {E_s_quote[i] = lm.all$residuals[i]/sd(lm.all$residuals)*sqrt(1-hat_value[i])}
+for (i in 1:517) {E_s[i] = E_s_quote[i]*sqrt(496/(497-E_s_quote[i]^2))}
+p_value = data.frame(matrix(c(row_num,pt(E_s,496)),nrow=517,ncol=2))
+colnames(p_value) = c('row_num','p')
+p_value[, 2] = as.numeric(as.character( p_value[, 2] ))
+p_value[p_value$p<0.05,]
+data3 = data3[- c(p_value[p_value$p<0.05,]$row_num), ]
+```
+
+I find 2 ourliers from the full regression, so I construct the dataset data3 without thoese extreme observations. 
+
+#### Linear regression
+
+Construct the full linear model with all the variables selected above. And use the cirteria of "AIC" to select the regression model backwards.
+
+```{r , include=FALSE}
+lm1 = lm(log(area + 1) ~ FFMC**10 + DMC + DC + ISI + temp + RH + wind + rain + (FFMC**10)*x1+ (FFMC**10)*x2+ (FFMC**10)*x3+ (FFMC**10)*x4+ (FFMC**10)*x5+ (FFMC**10)*x6+ (FFMC**10)*x7+ (FFMC**10)*x8+ (FFMC**10)*S1 + (FFMC**10)*S2 + (FFMC**10)*S2 + DMC*S1 + DMC*S2 + DMC*S3 + DMC*x1+ DMC*x2+DMC*x3+DMC*x4+DMC*x5+DMC*x6+DMC*x7+DMC*x8+ DC*S1 + DC*S2 + DC*S3 +DC*x1 + DC*x2+ DC*x3 +DC*x4 + DC*x5 + DC*x6 +DC*x7 + DC*x8 + ISI*S1 + ISI*S2 + ISI*S3 + ISI*x1 + ISI*x2 + ISI*x3 +ISI*x4 + ISI*x5 + ISI*x6 +ISI*x7 + ISI*x8 + temp*S1 + temp*S2 + temp*S3 + temp*x1 + temp*x2 + temp*x3 +temp*x4 + temp*x5 + temp*x6 +temp*x7 + temp*x8 + RH*S1 + RH*S2 + RH*S3 +RH*x1 + RH*x2 + RH*x3 +RH*x4 + RH*x5 + RH*x6+RH*x7 + RH*x8 + rain*S1 + rain*S2 + rain*S3 + rain*x1 + rain*x2 + rain*x3 +rain*x4 + rain*x5 + rain*x6 +rain*x7 + rain*x8 + wind*S1 + wind*S2 +wind*S3 + wind*x1 + wind*x2 +wind*x3 +wind*x4 + wind*x5 +wind*x6 +wind*x7 + wind*x8 +S1 + S2 + S3 + x1+ x2+ x3+ x4+ x5+ x6+ x7+ x8, data = data3)
+summary(lm1)
+step(lm1)
+```
+
+Construct the linear regression model with 67 variables selected by AIC. Since there are too many variables in the regression model, the adjusted-R-Squared is relatively small. So I reduce the variables of the model combining p-value of the explanatory variables and ANOVA to test the difference between models.  
+
+```{r , include = FALSE}
+lm2 = lm(log(data3$area + 1) ~ (FFMC**10) + DMC + DC + ISI + temp + RH + rain + x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + S1 + S2 + S3 + (FFMC**10)*x1 + (FFMC**10)*x2 + (FFMC**10)*x3 + (FFMC**10)*x4 + (FFMC**10)*x5 + (FFMC**10)*x6 + (FFMC**10)*x7 + (FFMC**10)*x8 + DMC*S2 + DMC*S3 + DMC*x1 + DMC*x2 + DMC*x3 + DMC*x4 + DMC*x5 + DMC*x6 + DMC*x7 + DMC*x8 + DC*x1 + DC*x2 + DC*x3 + DC*x4 + DC*x5 + DC*x6 + DC*x7 + DC*x8 + ISI*x1 + ISI*x2 + ISI*x3 + ISI*x4 + ISI*x5 + ISI*x6 + ISI*x7 + ISI*x8 + temp*S1 + temp*S2 + temp*S3 + RH*S1 + RH*S2 + RH*S3 + RH*x1 + RH*x2 + RH*x3 + RH*x4 + RH*x5 + RH*x6 + RH*x7 + RH*x8 + rain*x5 + rain*x7, data = data3)
+summary(lm2)
+
+lm3 = lm(log(data3$area + 1) ~   DMC + DC + ISI + RH + temp  + S1 + S2 + S3 + DMC*S2 + DMC*S3 + DC*x1 + DC*x2 + DC*x3 + DC*x4 + DC*x5 + DC*x6 + DC*x7 + DC*x8 + ISI*x1 + ISI*x2 + ISI*x3 + ISI*x4 + ISI*x5 + ISI*x6 + ISI*x7 + ISI*x8 + temp*S1 + temp*S2 + temp*S3 + RH*S1 + RH*S2 + RH*S3, data = data3)
+summary(lm3)
+```
+
+The new regression model has 33 variables.
+
+```{r, echo=FALSE}
+anova(lm2, lm3)
+```
+
+Because the P-value here is large(0.7594), we cannot reject the null hypothesis test that these two models are the same. So we use the simpler regression with fewer variable.
+
+After that, I use the command "regsubsets" to make model selection using different criteria such as "r2", "adjr2", and "CP". Based on Adjusted RSq, the optimal number of variables is 15; based on CP, the optimal number of variables is 7. Using the criteria of Adjusted RSq, I construct the model with 15 explanatory variables. 
+
+
+```{r leaps,echo=FALSE,fig.width=12, fig.height=4}
+library(leaps)
+
+data4 = data.frame(log(data3$area + 1), data3$DMC, data3$RH, data3$DC, data3$ISI, data3$temp, data3$S1, data3$S2, data3$S3, data3$DMC*data3$S2,data3$DMC*data3$S3,data3$DC*data3$x1,data3$DC*data3$x2,data3$DC*data3$x3,data3$DC*data3$x4,data3$DC*data3$x5,data3$DC*data3$x6,data3$DC*data3$x7,data3$DC*data3$x8,data3$ISI*data3$x1,data3$ISI*data3$x2,data3$ISI*data3$x3,data3$ISI*data3$x4,data3$ISI*data3$x5,data3$ISI*data3$x6,data3$ISI*data3$x7,data3$ISI*data3$x8,data3$temp*data3$S1,data3$temp*data3$S2,data3$temp*data3$S3,data3$RH*data3$S1,data3$RH*data3$S2,data3$RH*data3$S3) 
+
+regfit.full = regsubsets(data4$log.data3.area...1.~.,data4,nvmax = 32, really.big=TRUE, method="exhaustive") 
+reg.summary = summary(regfit.full)
+par(mfrow = c(1,2))
+plot(reg.summary$adjr2,xlab="Number of Variables",ylab="Adjusted RSq",type = "l")
+points(which.max(reg.summary$adjr2),reg.summary$adjr2[11],col="red",cex=2,pch=20) 
+plot(reg.summary$cp,xlab="Number of Variables",ylab="Cp",type = "l")
+points(which.min(reg.summary$cp),reg.summary$cp[10],col="red",cex=2,pch=20) 
+par(mfrow = c(1,4))
+plot(regfit.full,scale = "r2")
+plot(regfit.full,scale = "adjr2")
+plot(regfit.full,scale = "Cp")
+plot(regfit.full,scale = "bic")
+```
+
+
+
+
+At last, using the cirteria of "AIC" to select the regression model backwards again. I get the linear regression model(AIC = 334.14) with 10 variables as:
+$$\log(area + 1) = 0.5679 + 0.0205*temp  + 1.9384*S1 + 0.0004*DC - 1.6163*x1 $$ 
+$$- 0.4291*x5 - 0.6100*x3 + 0.5667*x7 + 0.0023DC*x1 - 0.0012DC*x7 - 0.1578temp*S1$$
+
+```{r ,include=FALSE}
+
+lm4 = lm(log(data3$area + 1) ~   DMC + temp  + S1 +  DMC*S2 + DMC*S3 + DC*x1 +  DC*x5 +  DC*x7 + DC*x8 + ISI*x1 + ISI*x2 + ISI*x3 + temp*S1 + temp*S2 + temp*S3 , data = data3)
+summary(lm4)
+
+step(lm4)
+
+lm5 = lm(log(data3$area + 1) ~  temp  + S1 +DC +  x1 + x5+ x3+ x7 +DC*x1 +  DC*x7 + temp*S1 , data = data3)
+summary(lm5)
+```
+
+#### Quality of the model
+
+The p-value of this regression model is small(0.0004) which indicates that the variables of this model is significant, particularly the variables "S1", "temp·S1" and "x3" are significant. However, the (adjusted) R-squares is small(0.04) which means this model explains little of the variability of the response data around its mean. In other words, the percentage of the percentage of the response variation that is explained by the linear model is low.
+
+## Linear regression with categorical response variable "area"
+
+#### Construct categorical response variable 
+
+To improve the original regression, I divide the response variable "area" into 6 ordered categories from the smallest forest fire class[1] to the largest forest fire class[6]. Denote variable "fire_class" as description of classes of forest fire. The criteria is:
+$$ fire\_class = $$
+$$\lbrace \ 1, if \ area=0; $$
+$$2, if \ 0<area<=4;$$
+$$3,if \ 4<area<= 40; $$
+$$4, if \ 40<area<=120; $$
+$$5, if \ 120<area<=400; $$
+$$6, if \ 400<area; \rbrace  $$
+
+```{r ,include=FALSE}
+data5 = data
+data5 = cbind(data, 0, 0, 0, 4, 6)
+colnames(data5)<-c("X","Y","month", "day", "FFMC", "DMC", "DC", "ISI", "temp", "RH", "wind", "rain", "area", "S1","S2","S3","season","fire_class")
+
+data5[which(data5[,3]=="dec" | data5[,3]=="jan" | data5[,3]=="feb"),14] = 1
+data5[which(data5[,3]=="jul" | data5[,3]=="aug" | data5[,3]=="sep"),15] = 1
+data5[which(data5[,3]=="mar" | data5[,3]=="apr" | data5[,3]=="nov"),16] = 1
+
+data5[which(data5[,3]=="dec" | data5[,3]=="jan" | data5[,3]=="feb"),17] = 1
+data5[which(data5[,3]=="jul" | data5[,3]=="aug" | data5[,3]=="sep"),17] = 2
+data5[which(data5[,3]=="mar" | data5[,3]=="apr" | data5[,3]=="nov"),17] = 3
+
+data5[which(data5[,13] == 0),18] = 1
+data5[which(data5[,13] >0 & data5[,13] <= 4),18] = 2
+data5[which(data5[,13] >4 & data5[,13] <= 40),18] = 3
+data5[which(data5[,13] >40 & data5[,13] <= 120),18] = 4
+data5[which(data5[,13] >120 & data5[,13] <= 400),18] = 5
+```
+
+#### Linear regression
+
+```{r ,include=FALSE}
+lm_dummy5 = lm(fire_class ~ X + Y + FFMC**10 + DMC + DC + ISI + temp + RH + wind + rain + (FFMC**10)*S1 + (FFMC**10)*S2 + (FFMC**10)*S3 + DMC*S1 + DMC*S2 + DMC*S3 + DC*S1 + DC*S2 + DC*S3 + ISI*S1 + ISI*S2 + ISI*S3 + temp*S1 + temp*S2 + temp*S3 + RH*S1 + RH*S2 + RH*S3 + rain*S1 + rain*S2 + rain*S3 + wind*S1 + wind*S2 +wind*S3 + S1 + S2 + S3, data = data5)
+summary(lm_dummy5)
+step(lm_dummy5)
+```
+
+Construct the linear regression model with variables selected by AIC:
+$$fire\_class = 1.0176 + 0.0295*X + 0.0342*temp + 0.0215*wind + $$
+$$0.9753*S1 + 0.7870*S3 - 0.1124*temp*S1 - 0.0674temp*S3 + 0.1197*wind*S1$$
+
+```{r ,include=FALSE}
+lm_dummy6 = lm(fire_class ~ X + temp + wind + S1 + S3 + temp*S1 + temp*S3 + wind*S1, data = data5)
+summary(lm_dummy6)
+```
+
+#### Quality of the model
+
+The p-value of this regression model is small(0.0001) which indicates that the variables of this model is significant, particularly the variables "temp", "temp·S1" and "temp·S3" are significant. However, the (adjusted) R-squares is small(0.044) which means this model explains little of the variability of the response data around its mean. In other words, the percentage of the percentage of the response variation that is explained by the linear model is low. So I would try the ordered logistic model instead of the linear regression.
+
+```{r bootstrap,echo=FALSE}
+
+library(bootstrap)
+k_fold_cv <- function(lmfit, k=10) {
+  mydata <- lmfit$model
+  outcome <- names(lmfit$model)[1]
+  predictors <- names(lmfit$model)[-1]
+  
+  theta.fit <- function(x,y){lsfit(x,y)}
+  theta.predict <- function(fit,x){cbind(1,x)%*%fit$coef} 
+  X <- as.matrix(mydata[predictors])
+  y <- as.matrix(mydata[outcome]) 
+  
+  results <- crossval(X,y,theta.fit,theta.predict,ngroup=k)
+  raw_rsq <- cor(y, lmfit$fitted.values)**2 # raw R2 
+  cv_rsq <- cor(y,results$cv.fit)**2 # cross-validated R2
+  
+  cat("Original R-square=",raw_rsq,"\n")  
+  cat(k,"Fold Cross-Validated R-square=",cv_rsq,"\n")  
+  cat("Change=",raw_rsq-cv_rsq,"\n") 
+}
+k_fold_cv(lm_dummy6)
+```
+
+<br> Also, I use the 10-fold-cross-validation to measure the predictive performance of this statistical model. In this method, the original dataset is randomly partitioned into 10 subsamples. One is left in each iteration for test and the other nine groups are used to train the regression model. From the result, we can see that the Cross-Validated R-square is small(0.0156) which indicates the regression model's predictive performance is not that good.
+
+## Ordered logistic regression with categorical response variable "area"
+
+#### Ordered logistic regression
+
+Since the categorical response variable "fire_class" is not just categorical, but ordered categories, the model needs to be able to handle the multiple categories, and ideally, account for the ordering. In this case, I decide to use the ordered logistic regression to calculate the probability that the response variable "fire_class" is in each level(from 1 to 6).
+
+<br> Firstly, we build the initial full ordered logistic model and calculate p-value of each explanatory variable.
+
+```{r ,include=FALSE}
+library(MASS)
+data5$fire_class = as.ordered(data5$fire_class)
+
+model1 = polr(fire_class ~ X + RH + DC + DMC + FFMC + ISI + temp + wind + S1 + S2 + S3 + temp*S1 + temp*S2 + temp*S3 + wind*S1, data5, Hess = TRUE)
+summary(model1) 
+```
+
+```{r ,echo=FALSE}
+ctable = coef(summary(model1))
+p = pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+(ctable = cbind(ctable, "p value" = p))
+```
+
+In this initial regression model, we can see that there are insignificant variables(p-value is large): RH, DC, DMC and wind. So I delete these variables and build the new regression model.
+
+```{r ,include=FALSE}
+library(MASS)
+model2 = polr(fire_class ~ X + FFMC + ISI + temp + S1 + S2 + S3 + temp*S1 + temp*S2 + temp*S3 + wind*S1 , data5, Hess = TRUE)
+summary(model2) 
+
+ctable = coef(summary(model2))
+p = pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+(ctable = cbind(ctable, "p value" = p))
+
+pred = predict(model2, data5)
+print(pred, digits = 3)
+(tab <- table(pred, data5$fire_class))
+sum(diag(tab))/sum(tab)
+```
+
+In this ordered logistic model, the probability for "fire_class" to be in each level is:
+$$y = 0.0620X + 0.0337FFMC - 0.0328ISI + 0.1448temp + 4.3984S1 + 2.2014S2 +3.6431S3 + 0.0533wind - 0.3478temp*S1 - 0.0938temp*S2 - 0.2354temp*S3 + 0.1633wind*S1$$
+$$p(fire\_class = 1) = \frac{1}{1 + \rm e^{-(6.3228 - y)}}  $$ 
+$$p(fire\_class = 1 \ or \ 2) = \frac{1}{1 + \rm e^{-(7.2450 - y)}}  $$ 
+$$p(fire\_class = 1 \ or \ 2 \ or\ 3) = \frac{1}{1 + \rm e^{-(9.2959 - y)}}  $$ 
+$$p(fire\_class = 1 \ or \ 2 \ or\ 3 \ or \ 4 ) = \frac{1}{1 + \rm e^{-(10.5819 - y)}}  $$ 
+$$p(fire\_class = 1 \ or \ 2 \ or\ 3 \ or \ 4 \ or \ 5) = \frac{1}{1 + \rm e^{-(12.1020 - y)}}  $$ 
+$$ p(2) = p(1 \ or \ 2) - p(1)\\ p(3) = p (1 \ or \ 2\ or\ 3) - p(1 \ or \ 2)\\...\\p(fire\_class = 6) = 1 - p(1) - p(2) - p(3) - p(4) - p(5)   $$ 
+
+#### Quality of the model
+
+In this regression model, all the explanatory variables are significant and the correct rate of prediction is about 0.5 which is acceptable. Also, if we divide the data into 2 groups---randomly choose 80% data for train and 20% data for test, we can see that the correct rate of prediction for these two groups are close(around 50%). So we can say that this ordered logistic regression model is constant.
+
+```{r ,echo=FALSE}
+ind = sample(2, nrow(data5), replace = TRUE, prob = c(0.8, 0.2))
+train = data5[ind == 1, ]
+test = data5[ind == 2, ]
+
+pred = predict(model2, train)
+(tab <- table(pred, train$fire_class))
+1 - sum(diag(tab))/sum(tab)
+
+pred1 = predict(model2, test)
+(tab1 = table(pred1, test$fire_class))
+sum(diag(tab))/sum(tab)
+
+```
+
+## General discussions
+
+### The meaning and cautions about regression models
+
+In the linear regression, we can see that "temp", "S1", and "temp*S1" are particularly significant variables. The regression equations can be written as:
+$$\log(area + 1) = 2.5063 - 0.1373*temp + 0.0004*DC - 1.6163*x1 - 0.4291*x5 - 0.6100*x3 + 0.5667*x7 +$$
+$$0.0023DC*x1 - 0.0012DC*x7\ ,S1=1 $$
+$$log(area + 1) = 0.5679 + 0.0205*temp + 0.0004*DC - 1.6163*x1 - 0.4291*x5 - 0.6100*x3 + 0.5667*x7 + $$
+$$0.0023DC*x1 - 0.0012DC*x7\ ,S1=0$$
+$$fire\_class = 1.9929 + 0.0295*X - 0.0782*temp + 0.1412*wind, \ S1 = 1$$
+$$fire\_class = 1.8046 + 0.0295*X - 0.0332*temp + 0.0215*wind, \ S3 =1$$
+$$fire\_class = 1.0176 + 0.0295*X + 0.0342*temp + 0.0215*wind, \ S1 = 0 \ and \ S3=0$$
+It is obvious that when the month is in {dec, jan, feb}, the areas of forest fire are negtively correlated with temperature which means as temperature increases, the areas of forest fire are unlikely to become larger during the preiod from december to february. Also, in {mar, apr, nov} the level of fire is not positively correlated with temperature. So we can conclude that in the colder period of a year, as temperature increass, the area of forest fire is tending to be smaller. Inversely, during the warmer period of a year, it is more likely to see bigger forest fire as temperature rises.
+
+<br> In month {dec, jan, feb}, as temperature has a negtive impact on area of fire, the wind speed has a more significantly positive impact on the area of fire compared to other period of a year. It can be visualized as: 
+
+```{r ,echo=FALSE,fig.width=6, fig.height=4 }
+par(mfrow = c(1,2))
+coplot(log(data3$area + 1) ~ temp| season, data=data3, panel = function(x,y,...){
+  panel.smooth(x,y,span = 0.8,iter = 5,col.smooth = "green4",...)
+  abline(lm(y ~ x), col="red")},
+  rows=1,pch=19, cex=0.3)
+
+coplot(log(data3$area + 1) ~ wind| season, data=data3, panel = function(x,y,...){
+  panel.smooth(x,y,span = 0.8,iter = 5,col.smooth = "green4",...)
+  abline(lm(y ~ x), col="red")},
+  rows=1,pch=19, cex=0.3)
+```
+
+<br> Also, in the first regression we can see that in positions "x1", "x3", "x5" and "x7", the areas of forest fire tend to be smaller than other positions which is consistent with the boxplots shown in the part "Add Dummy variables --- X & Y". 
+
+<br> Yet since the predictive performance of the linear regression is relatively poor, I use the ordered logistic regression model to predict the area of forest fire. As we know the value of varibles "X", "FFMC", "ISI", "temp", "wind", "month", we can predict the level of the fire area ranging from "1"(smallest area of forest fire) to "6"(largest area of forest fire).
+
+
